@@ -106,7 +106,7 @@ export default function Home() {
     }, 3500);
 
     try {
-      const response = await axios.post('http://localhost:8000/benchmark', {
+      const response = await axios.post('https://web-production-9610aa.up.railway.app/benchmark', {
         job_description: jd
       });
       clearInterval(stepInterval);
@@ -154,7 +154,7 @@ export default function Home() {
 
     try {
       const response = await axios.post(
-        'http://localhost:8000/update-resume',
+        'https://web-production-9610aa.up.railway.app/update-resume',
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
