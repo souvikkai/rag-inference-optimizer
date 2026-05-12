@@ -6,6 +6,24 @@ import axios from 'axios';
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
+interface SelectedChunk {
+  chunk: string;
+  score?: number;
+  faiss_score?: number;
+  rerank_score?: number;
+  chunk_index?: number;
+}
+
+interface QualityBreakdown {
+  score?: number;
+  faithfulness?: number;
+  relevance?: number;
+  specificity?: number;
+  reasoning?: string;
+  judge_latency_ms?: number;
+  judge_model?: string;
+}
+
 interface ConfigResult {
   config: string;
   answer: string;
@@ -13,12 +31,27 @@ interface ConfigResult {
   cost_usd: number;
   quality_score: number;
   cost_savings_vs_baseline: string;
+  quality_breakdown?: QualityBreakdown;
+  candidate_retrieve_latency_ms?: number;
+  rerank_latency_ms?: number;
+  llm_latency_ms?: number;
+  candidate_chunks_count?: number;
+  selected_chunk_buckets?: string[];
+  selected_chunks?: SelectedChunk[];
+}
+
+interface RetrievedChunk {
+  chunk: string;
+  score?: number;
+  faiss_score?: number;
+  rerank_score?: number;
+  chunk_index?: number;
 }
 
 interface BenchmarkResults {
   configs: ConfigResult[];
   retrieve_latency_ms: number;
-  retrieved_chunks: Array<{ chunk: string; score: number }>;
+  retrieved_chunks: RetrievedChunk[];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -45,8 +78,8 @@ function qualityGrade(score: number): { grade: string; color: string; bg: string
 
 const CONFIGS = [
   {
-    key: 'Claude Sonnet',
-    short: 'Claude',
+    key: 'Claude Haiku',
+    short: 'Haiku',
     accent: '#f97316',
     accentLight: '#fff7ed',
     tag: 'Baseline',
@@ -182,7 +215,7 @@ export default function Home() {
   const STEPS = [
     'Embedding job description...',
     'Searching FAISS index for relevant resume chunks...',
-    'Claude Sonnet generating talking points...',
+    'Claude Haiku generating talking points...',
     'Llama 3.1 8B on Groq generating talking points...',
     'LLM-as-judge scoring all three configurations...',
   ];
@@ -834,7 +867,8 @@ export default function Home() {
             <p>
               Paste a job description. The system retrieves your most relevant
               experience and generates tailored talking points — then benchmarks
-              Claude Sonnet against Llama 3.1 8B on Groq for cost, latency, and quality.
+              Claude Haiku against Llama 3.1 8B on Groq for cost, latency, and quality
+              (Sonnet as LLM judge; reranker path uses 25 candidates → diverse 5).
             </p>
           </div>
 
@@ -995,7 +1029,7 @@ export default function Home() {
 
             <div className="input-footer">
               <div className="char-count">
-                {jd.length} chars · top 5 resume chunks · 3 LLM configs
+                {jd.length} chars · standard top-5 retrieval · 3 LLM configs
               </div>
               <button
                 className="run-btn"
@@ -1181,6 +1215,150 @@ export default function Home() {
                         </div>
                       </div>
 
+                      {config.candidate_chunks_count != null && (
+                        <div
+                          style={{
+                            padding: '10px 20px 12px',
+                            borderBottom: '1px solid var(--border)',
+                            background: 'var(--surface2)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 10,
+                              letterSpacing: '0.06em',
+                              textTransform: 'uppercase',
+                              color: 'var(--text-muted)',
+                              marginBottom: 6,
+                              fontWeight: 600,
+                            }}
+                          >
+                            Rerank diagnostics
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontFamily: "'DM Mono', monospace",
+                              color: 'var(--text-dim)',
+                              lineHeight: 1.45,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <span style={{ color: 'var(--text-muted)' }}>Pipeline</span>{' '}
+                            <span style={{ color: 'var(--text)' }}>
+                              {config.candidate_chunks_count} candidates → rerank → diverse 5
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '6px 14px',
+                              fontSize: 11,
+                              fontFamily: "'DM Mono', monospace",
+                              color: 'var(--text-dim)',
+                              marginBottom:
+                                (config.selected_chunk_buckets?.length ?? 0) > 0 ||
+                                (config.selected_chunks?.length ?? 0) > 0
+                                  ? 8
+                                  : 0,
+                            }}
+                          >
+                            <span>
+                              <span style={{ color: 'var(--text-muted)' }}>Candidate chunks</span>{' '}
+                              {config.candidate_chunks_count}
+                            </span>
+                            <span>
+                              <span style={{ color: 'var(--text-muted)' }}>Retrieval</span>{' '}
+                              {typeof config.candidate_retrieve_latency_ms === 'number'
+                                ? `${config.candidate_retrieve_latency_ms.toFixed(0)}ms`
+                                : '—'}
+                            </span>
+                            <span>
+                              <span style={{ color: 'var(--text-muted)' }}>Rerank</span>{' '}
+                              {typeof config.rerank_latency_ms === 'number'
+                                ? `${config.rerank_latency_ms.toFixed(0)}ms`
+                                : '—'}
+                            </span>
+                            <span>
+                              <span style={{ color: 'var(--text-muted)' }}>LLM</span>{' '}
+                              {typeof config.llm_latency_ms === 'number'
+                                ? `${config.llm_latency_ms.toFixed(0)}ms`
+                                : '—'}
+                            </span>
+                          </div>
+                          {(config.selected_chunk_buckets?.length ?? 0) > 0 && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: 6,
+                                marginBottom:
+                                  (config.selected_chunks?.length ?? 0) > 0 ? 8 : 0,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  color: 'var(--text-muted)',
+                                  fontFamily: "'DM Mono', monospace",
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em',
+                                }}
+                              >
+                                Buckets
+                              </span>
+                              {(config.selected_chunk_buckets ?? []).map((b: string, bi: number) => (
+                                <span
+                                  key={bi}
+                                  style={{
+                                    fontSize: 10,
+                                    fontFamily: "'DM Mono', monospace",
+                                    color: meta.accent,
+                                    padding: '2px 8px',
+                                    borderRadius: 999,
+                                    border: `1px solid ${meta.accent}`,
+                                    background: 'rgba(0,0,0,0.25)',
+                                  }}
+                                >
+                                  {b}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {(config.selected_chunks?.length ?? 0) > 0 && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {(config.selected_chunks ?? []).slice(0, 2).map((ch: SelectedChunk, ci: number) => {
+                                const raw = ch.chunk ?? '';
+                                const preview =
+                                  raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+                                const rs = ch.rerank_score;
+                                return (
+                                  <div
+                                    key={ci}
+                                    style={{
+                                      fontSize: 10,
+                                      lineHeight: 1.45,
+                                      color: 'var(--text-dim)',
+                                    }}
+                                  >
+                                    <span style={{ color: 'var(--text-muted)', fontFamily: "'DM Mono', monospace" }}>
+                                      #{ci + 1}
+                                    </span>{' '}
+                                    <span style={{ fontFamily: "'DM Mono', monospace", color: meta.accent }}>
+                                      {typeof rs === 'number' ? rs.toFixed(4) : '—'}
+                                    </span>
+                                    <span style={{ color: 'var(--text-muted)' }}> · </span>
+                                    <span>{preview}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <div className="card-body">
                         {points.slice(0, 5).map((point, j) => (
                           <div key={j} className="talking-point">
@@ -1219,7 +1397,7 @@ export default function Home() {
                     color: 'var(--text-muted)',
                     fontFamily: 'DM Mono, monospace'
                   }}>
-                    — same context used across all 3 configs
+                    — first two configs use the chunks below; reranker picks 5 diverse chunks from top 25
                   </span>
                 </button>
 
@@ -1230,7 +1408,7 @@ export default function Home() {
                         <div className="chunk-rank">
                           #{i + 1}<br />
                           <span style={{ color: 'var(--accent)', fontSize: 10 }}>
-                            {chunk.score.toFixed(3)}
+                           {(chunk.score ?? chunk.faiss_score ?? 0).toFixed(3)}
                           </span>
                         </div>
                         <div className="chunk-text">{chunk.chunk}</div>
