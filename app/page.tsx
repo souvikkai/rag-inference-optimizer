@@ -141,7 +141,7 @@ export default function Home() {
     try {
       const response = await axios.post('https://web-production-9610aa.up.railway.app/benchmark', {
         job_description: jd
-      });
+      }, { timeout: 120000 });
       clearInterval(stepInterval);
       setLoadingStep(5);
       setResults(response.data);
