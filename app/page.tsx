@@ -139,8 +139,13 @@ export default function Home() {
     }, 3500);
 
     try {
+      const cleanedJobDescription = jd
+        .trim()
+        .replace(/\s+/g, ' ')
+        .slice(0, 5000);
+
       const response = await axios.post('https://web-production-9610aa.up.railway.app/benchmark', {
-        job_description: jd
+        job_description: cleanedJobDescription
       }, { timeout: 120000 });
       clearInterval(stepInterval);
       setLoadingStep(5);
