@@ -2,6 +2,10 @@
 
 import { useState, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { extractTextFromPdf } from '@/lib/jdPdfExtract';
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000';
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -57,6 +61,26 @@ interface BenchmarkResults {
 // ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
+function normalizeJdText(text: string): string {
+  return text
+    .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+    .replace(/\s{3,}/g, '\n')
+    .trim();
+}
+
+function isAllowedJdUpload(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  const t = file.type.toLowerCase();
+  return (
+    t.includes('pdf') ||
+    t.includes('text') ||
+    t === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    lower.endsWith('.pdf') ||
+    lower.endsWith('.docx') ||
+    lower.endsWith('.txt')
+  );
+}
+
 function formatAnswer(answer: string): string[] {
   const lines = answer.split('\n').filter(l => l.trim());
   const points = lines.filter(l =>
@@ -144,7 +168,7 @@ export default function Home() {
         .replace(/\s+/g, ' ')
         .slice(0, 5000);
 
-      const response = await axios.post('https://web-production-9610aa.up.railway.app/benchmark', {
+      const response = await axios.post(`${API_BASE_URL}/benchmark`, {
         job_description: cleanedJobDescription
       }, { timeout: 120000 });
       clearInterval(stepInterval);
@@ -162,21 +186,63 @@ export default function Home() {
     }
   }, [jd]);
 
-  // PDF text extraction via FileReader
   const handleFile = useCallback((file: File) => {
-    if (!file.type.includes('pdf') && !file.type.includes('text')) {
-      setError('Please upload a PDF or text file.');
+    if (!isAllowedJdUpload(file)) {
+      setError('Please upload a PDF, DOCX, or text file.');
       return;
     }
     setUploadedFileName(file.name);
+
+    const lower = file.name.toLowerCase();
+    const isPdf =
+      file.type.includes('pdf') || lower.endsWith('.pdf');
+    const isDocx =
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      lower.endsWith('.docx');
+
+    if (isPdf) {
+      const reader = new FileReader();
+      reader.onload = async e => {
+        const buffer = e.target?.result as ArrayBuffer;
+        try {
+          const raw = await extractTextFromPdf(buffer);
+          setJd(normalizeJdText(raw));
+          setError('');
+        } catch {
+          setError('Please upload a PDF, DOCX, or text file.');
+        }
+      };
+      reader.onerror = () => {
+        setError('Please upload a PDF, DOCX, or text file.');
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
+    if (isDocx) {
+      const reader = new FileReader();
+      reader.onload = async e => {
+        const buffer = e.target?.result as ArrayBuffer;
+        try {
+          const mammoth = await import('mammoth');
+          const { value } = await mammoth.extractRawText({ arrayBuffer: buffer });
+          setJd(normalizeJdText(value));
+          setError('');
+        } catch {
+          setError('Please upload a PDF, DOCX, or text file.');
+        }
+      };
+      reader.onerror = () => {
+        setError('Please upload a PDF, DOCX, or text file.');
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = e => {
       const text = e.target?.result as string;
-      // Basic text extraction — strips non-printable chars
-      const cleaned = text.replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-                          .replace(/\s{3,}/g, '\n')
-                          .trim();
-      setJd(cleaned);
+      setJd(normalizeJdText(text));
       setError('');
     };
     reader.readAsText(file);
@@ -192,7 +258,7 @@ export default function Home() {
 
     try {
       const response = await axios.post(
-        'https://web-production-9610aa.up.railway.app/update-resume',
+        `${API_BASE_URL}/update-resume`,
         formData,
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
@@ -1000,7 +1066,7 @@ export default function Home() {
                 >
                   <span className="drop-zone-icon">📄</span>
                   <div className="drop-zone-title">Drop JD PDF here</div>
-                  <div className="drop-zone-sub">or click to browse · PDF or TXT</div>
+                  <div className="drop-zone-sub">or click to browse · PDF, DOCX, or TXT</div>
                   {uploadedFileName && (
                     <div className="file-badge">✓ {uploadedFileName}</div>
                   )}
@@ -1008,7 +1074,7 @@ export default function Home() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.txt,.docx"
+                  accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
                   style={{ display: 'none' }}
                   onChange={e => {
                     const file = e.target.files?.[0];
