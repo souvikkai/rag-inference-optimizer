@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import Link from 'next/link';
 import axios from 'axios';
 import { extractTextFromPdf } from '@/lib/jdPdfExtract';
 
@@ -353,6 +354,8 @@ export default function Home() {
           font-size: 20px;
           color: var(--text);
           letter-spacing: -0.5px;
+          text-decoration: none;
+          display: block;
         }
 
         .header-logo span { color: var(--accent); font-style: italic; }
@@ -916,9 +919,9 @@ export default function Home() {
       <div className="page">
         {/* Header */}
         <header className="header">
-          <div className="header-logo">
+          <Link href="/" className="header-logo">
             RAG <span>Inference</span> Optimizer
-          </div>
+          </Link>
           <div className="header-meta">
             Souvik Kundu · AI PM Portfolio · Product 3<br />
             github.com/souvikkai
