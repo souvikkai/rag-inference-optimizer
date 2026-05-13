@@ -1047,7 +1047,7 @@ export default function Home() {
                 className={`tab ${activeTab === 'pdf' ? 'active' : ''}`}
                 onClick={() => setActiveTab('pdf')}
               >
-                Upload PDF
+                Upload File
               </button>
             </div>
 
@@ -1068,7 +1068,7 @@ export default function Home() {
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <span className="drop-zone-icon">📄</span>
-                  <div className="drop-zone-title">Drop JD PDF here</div>
+                  <div className="drop-zone-title">Drop JD file here</div>
                   <div className="drop-zone-sub">or click to browse · PDF, DOCX, or TXT</div>
                   {uploadedFileName && (
                     <div className="file-badge">✓ {uploadedFileName}</div>
